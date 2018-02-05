@@ -1,0 +1,94 @@
+CSE 512: Phase 1
+Group: Deadpool
+Team: Shailee Desai(1210936321), Amit Kumar(1211257070), Nishtha Punjabi(1211226117), Abhishek Pharande(1211213793)
+
+Video link: https://youtu.be/sSludTFPsUk
+
+file transfer:
+./hadoop fs -put /home/user/Downloads/zcta510.csv hdfs://master:54310/zcta5101.csv
+./hadoop fs -put /home/user/Downloads/arealm.csv hdfs://master:54310/arealm1.csv
+
+Scale queries:
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+import org.apache.spark.storage.StorageLevel;
+import org.datasyslab.geospark.spatialOperator.RangeQuery; 
+import org.datasyslab.geospark.spatialRDD.PointRDD;
+import com.vividsolutions.jts.geom.Envelope;
+import org.datasyslab.geospark.enums.FileDataSplitter;
+import org.datasyslab.geospark.enums.IndexType;
+import com.vividsolutions.jts.geom.GeometryFactory;
+import org.datasyslab.geospark.spatialRDD.CircleRDD;
+import org.datasyslab.geospark.spatialOperator.KNNQuery;
+import com.vividsolutions.jts.geom.Point;
+import com.vividsolutions.jts.geom.Coordinate;
+import org.datasyslab.geospark.spatialOperator.JoinQuery;
+import org.datasyslab.geospark.spatialRDD.RectangleRDD;
+import org.datasyslab.geospark.enums.GridType;
+
+1. Create GeoSpark SpatialRDD (PointRDD).
+2. Spatial Range Query: Query the PointRDD using this query window [x1(-113.79), x2(-
+109.73), y1(35.08), y2(32.99)].
+a. Query the PointRDD
+
+val q_env=new Envelope (-113.79,-109.73,32.99,35.08);
+val PtRDD = new PointRDD(sc, "hdfs://master:54310/arealm1.csv", 0, FileDataSplitter.CSV, false);
+val res_size = RangeQuery.SpatialRangeQuery(PtRDD, q_env, false, false).count();
+
+
+b. Build R-Tree index on PointRDD then query this PointRDD.
+
+PtRDD.buildIndex(IndexType.RTREE,false);
+val result=RangeQuery.SpatialRangeQuery(PtRDD, q_env, false, true);
+var res_size=result.count();
+
+3. Spatial KNN query: Query the PointRDD using this query point [x1(35.08),y1(-113.79)].
+a. Query the PointRDD and find 5 Nearest Neighbors.
+
+val fact=new GeometryFactory();
+val queryPoint=fact.createPoint(new Coordinate(35.08,-113.79));
+val PtRDD = new PointRDD(sc, "hdfs://master:54310/arealm1.csv", 0, FileDataSplitter.CSV, false);
+val result = KNNQuery.SpatialKnnQuery(PtRDD, queryPoint, 5,false);
+val res_size=result.size();
+
+b. Build R-Tree index on PointRDD then query this PointRDD again.
+
+PtRDD.buildIndex(IndexType.RTREE,false);
+val result = KNNQuery.SpatialKnnQuery(PtRDD, queryPoint, 5,true);
+val res_size=result.size();
+
+4. Spatial Join query: Create a GeoSpark rectRDD and use it to join PointRDD
+a. Join the PointRDD using Equal grid without R-Tree index.
+
+val PtRDD = new PointRDD(sc, "hdfs://master:54310/arealm1.csv", 0, FileDataSplitter.CSV, false); 
+val rectRDD = new RectangleRDD(sc, "hdfs://master:54310/zcta5101.csv", 0, FileDataSplitter.CSV, false); 
+PtRDD.analyze();
+PtRDD.spatialPartitioning(GridType.EQUALGRID);
+rectRDD.spatialPartitioning(PtRDD.grids);
+val result = JoinQuery.SpatialJoinQuery(PtRDD,rectRDD,false,true);
+val res_size=result.count();
+
+
+b. Join the PointRDD using Equal grid with R-Tree index.
+
+val PtRDD = new PointRDD(sc, "hdfs://master:54310/arealm1.csv", 0, FileDataSplitter.CSV, false); 
+
+val rectRDD = new RectangleRDD(sc, "hdfs://master:54310/zcta5101.csv", 0, FileDataSplitter.CSV, false); 
+PtRDD.analyze();
+PtRDD.spatialPartitioning(GridType.EQUALGRID);
+PtRDD.buildIndex(IndexType.RTREE,true);
+rectRDD.spatialPartitioning(PtRDD.grids);
+val result = JoinQuery.SpatialJoinQuery(PtRDD,rectRDD,true,true);
+val res_size=result.count();
+
+
+c. Join the PointRDD using R-Tree grid without R-Tree index.
+
+val PtRDD = new PointRDD(sc, "hdfs://master:54310/arealm1.csv", 0, FileDataSplitter.CSV, false); 
+val rectRDD = new RectangleRDD(sc, "hdfs://master:54310/zcta5101.csv", 0, FileDataSplitter.CSV, false); 
+PtRDD.analyze();
+PtRDD.spatialPartitioning(GridType.RTREE);
+rectRDD.spatialPartitioning(PtRDD.grids);
+val result = JoinQuery.SpatialJoinQuery(PtRDD,rectRDD,false,true);
+val res_size=result.count();
+
